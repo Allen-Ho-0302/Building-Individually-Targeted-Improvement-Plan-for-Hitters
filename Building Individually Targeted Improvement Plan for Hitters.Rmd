@@ -14,76 +14,54 @@ knitr::opts_chunk$set(echo=T,
                       error = F)
 ```
 
-## Introduction
+## 1. Introduction
 
 Group players according to their ability to do damage on contact (the Blast practice data). Then build individually targeted improvement plans for all of the hitters by evaluating their in-game performance (xwOBA).
 
-## Method
+## 2. Method
 
 Data include pitch level Trackman data from games and swing level Blast Motion data from practice.
 
-Performed cluster analysis on practice data (Blast) and came up with four groups.
+Performed cluster analysis on practice data (Blast Motion Data) and came up with four groups.
 
-To make development plans for them, I had to see the characteristics of these four groups and their respective in-game performance. xwOBA for those contact plays is my choice for evaluation.
+To make development plans for them, I had to see the characteristics of these four groups and their respective in-game performance. xwOBA for those contact plays is my choice for evaluation of their in-game performance.
 
-## Exploratory Data Analysis
+## 3. Exploratory Data Analysis
 
-### Packages needed:
+### 3.1 Packages needed:
 ```{r loadlib}
-install.packages("ggplot2")
-install.packages("DMwR")
-install.packages('VIM')
-install.packages('ggfortify')
 library(ggplot2)
 library(DMwR)
 library(VIM)
-library(ggfortify)
+library(dplyr)
+library(mclust)
 ```
 
-### Import the data
+### 3.2 Import the data
 ```{r data}
 df.trackman = read.csv('C:/Users/allen/Desktop/Baseball Analytics Coding Task/trackman_data.csv')
 df.blast = read.csv('C:/Users/allen/Desktop/Baseball Analytics Coding Task/blast_data.csv')
 ```
 
-### Top 5 rows of the dataframe
+### 3.3 Top 5 rows of the dataframe
 ```{r head}
 head(df.trackman)
 head(df.blast)
 ```
 
-### Structure of the dataframe
+### 3.4 Structure of the dataframe
 ```{r structure}
 str(df.trackman)
 str(df.blast)
 ```
 
-### Summary of the dataframe
+### 3.5 Summary of the dataframe
 ```{r summary}
 summary(df.trackman)
 summary(df.blast)
 ```
 
-### NaN values
-```{r NaN}
-colnames(df.trackman)[colSums(is.na(df.trackman)) > 0]
-colnames(df.blast)[colSums(is.na(df.blast)) > 0]
-```
-
-### KNN imputation
-A popular approach to missing data imputation is to use a model to predict the missing values. This requires a model to be created for each input variable that has missing values. Although any one among a range of different models can be used to predict the missing values, the k-nearest neighbor (KNN) algorithm has proven to be generally effective, often referred to as “nearest neighbor imputation.”
-```{r KNN imputation}
-knnOutput <- kNN(df.trackman, variable=c("PlateSide", "PlateHeight", "ExitSpeed", "VertAngle", "HorzAngle", "HitSpinRate"), k=5)
-anyNA(knnOutput)
-```
-
-To properly evaluate the damage done by each batter, I will come up with the xwOBA value for each plate appearance. xwOBA is a rate stat like batting average or slugging percentage, but uses weights that accurately represent the relative value of each type of outcome. Fangraphs has these values tabulated. With an out worth 0, a single is worth around 0.88, for example. If I take those weights and use them with my hit probabilities, I can calculate an expected wOBA, or xwOBA.
-
-MLB Blogs chose not to include batted ball spray angle in their model of xwOBA, claiming they haven't found evidence that it contributes significantly to a better or worse outcome. They may well be right -- just to reiterate, I'm including it to see how well outcomes are modeled by all the things a hitter can control. It might turn out that their model outperforms mine, or is better at predicting how a player performs in the future.
-
-I will only include rows that contain 'ExitSpeed', 'VertAngle', 'HorzAngle'value since those are the ones that are core of the xwOBA value.
-
-## Probability Density Function
+### 3.6 Probability Density Function
 A Probability density function (PDF) is a function whose value at any given sample in the set of possible values can be interpreted as a relative likelihood that the value of the random variable would equal that sample. In other words, the value of the PDF at two different samples can be used to infer, in any particular draw of the random variable, how much more likely it is that the random variable would equal one sample compared to the other sample.
 
 The distribution of data from Blast
@@ -111,7 +89,75 @@ legend(2, 0.5, legend=c("AttackAngle", "BatSpeed", "Connection", "EarlyConnectio
        col=c(1, 2, 3, 4, 5, 6), lty=1, cex=0.8)
 ```
 
-# Mean value of data from blast with different BatterId
-```{r mean value}
-
+### 3.7 NaN values
+```{r NaN}
+colnames(df.trackman)[colSums(is.na(df.trackman)) > 0]
+colnames(df.blast)[colSums(is.na(df.blast)) > 0]
 ```
+
+## 4. Data Preprocessing
+### 4.1 KNN imputation
+A popular approach to missing data imputation is to use a model to predict the missing values. This requires a model to be created for each input variable that has missing values. Although any one among a range of different models can be used to predict the missing values, the k-nearest neighbor (KNN) algorithm has proven to be generally effective, often referred to as “nearest neighbor imputation.”
+```{r KNN imputation}
+knnOutput <- kNN(df.trackman, variable=c("PlateSide", "PlateHeight", "ExitSpeed", "VertAngle", "HorzAngle", "HitSpinRate"), k=5)
+anyNA(knnOutput)
+```
+
+### 4.2 Mean value of data from blast group by BatterId
+```{r mean value}
+df.blast <- df.blast[,!(names(df.blast) %in% c('Date', 'Handedness'))]
+df.blast.mean <- df.blast %>% group_by(BatterId)
+```
+
+## 5. K means clustering
+### 5.1 Elbow method
+After preparing the targeted data in the previous step, I selected optimal k value of k-means clustering using the elbow method. From the plot, the optimal k value is equal to 4. However k=5 also seems to be a potential candidate. So I looked at the second approach which comes with a new package.
+```{r kmeans clustering}
+df.blast.clust = df.blast.mean[,!(names(df.blast.mean) %in% c('BatterId'))]
+scaled_data = as.matrix(scale(df.blast.clust))
+set.seed(123)
+k.max <- 15
+data <- scaled_data
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15)$tot.withinss})
+wss
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+```
+
+### 5.2 Bayesian Inference Criterion for k means
+```{r BIC}
+d_clust <- Mclust(as.matrix(scaled_data), G=1:15, 
+                  modelNames = mclust.options("emModelNames"))
+d_clust$BIC
+plot(d_clust)
+```
+
+### 5.3 K means clustering
+```{r kmeans}
+kmm = kmeans(scaled_data,3,nstart = 50,iter.max = 15)   
+kmm 
+```
+
+## 6 Classification model for xwOBA
+To properly evaluate the damage done by each batter, I came up with the xwOBA value for each plate appearance. xwOBA is a rate stat like batting average or slugging percentage, but uses weights that accurately represent the relative value of each type of outcome. Fangraphs has these values tabulated. With an out worth 0, a single is worth around 0.88, for example. If I take those weights and use them with my hit probabilities, I can calculate an expected wOBA, or xwOBA.
+
+MLB Blogs chose not to include batted ball spray angle in their model of xwOBA, claiming they haven't found evidence that it contributes significantly to a better or worse outcome. They may well be right -- just to reiterate, I included it to see how well outcomes are modeled by all the things a hitter can control. It might turn out that their model outperforms mine, or is better at predicting how a player performs in the future.
+
+I included rows that contain 'ExitSpeed', 'VertAngle', 'HorzAngle'value since those are the ones that are core of the xwOBA value.
+```{r xwOBA}
+df.trackman.xwoba <- subset(df.trackman, PitchCall==c('BallCalled', 'InPlay', 'HitByPitch'))
+df.trackman.xwoba$PlayResult[df.trackman.xwoba$PitchCall==c('HitByPitch', 'PlayResult')] <- 'HitByPitch'
+df.trackman.xwoba$PlayResult[df.trackman.xwoba$PitchCall=='BallCalled' & df.trackman.xwoba$Balls==3] <- 'Walk'
+df.trackman.xwoba %>% filter(PlayResult != 'Undefined')
+```
+
+
+
+
+
+
+
+
