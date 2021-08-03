@@ -148,14 +148,59 @@ MLB Blogs chose not to include batted ball spray angle in their model of xwOBA, 
 
 I included rows that contain 'ExitSpeed', 'VertAngle', 'HorzAngle'value since those are the ones that are core of the xwOBA value.
 ```{r xwOBA}
+#filter to wanted columns
 df.trackman.xwoba <- subset(df.trackman, PitchCall==c('BallCalled', 'InPlay', 'HitByPitch'))
+
+#assign hitbypitch, walk to column 'PlayResult' 
 df.trackman.xwoba$PlayResult[df.trackman.xwoba$PitchCall==c('HitByPitch', 'PlayResult')] <- 'HitByPitch'
 df.trackman.xwoba$PlayResult[df.trackman.xwoba$PitchCall=='BallCalled' & df.trackman.xwoba$Balls==3] <- 'Walk'
 df.trackman.xwoba %>% filter(PlayResult != 'Undefined')
+
+#any long-version out = out
+df.trackman.xwoba$PlayResult[df.trackman.xwoba$PlayResult==c('Out', 'Sacrifice', 'Error', 'FieldersChoice')] <- 'Out'
+
+#Now that I have simplified plate-appearance outcomes, I'll join in Fangraphs' wOBA values for the given season(2019)
+
+#Assign the values to my dataframe 'df.trackman.xwoba'
+df.trackman.xwoba$wBB <- 0.69
+df.trackman.xwoba$wHBP <- 0.719
+df.trackman.xwoba$w1B <- 0.87
+df.trackman.xwoba$w2B <- 1.217
+df.trackman.xwoba$w3B <- 1.529
+df.trackman.xwoba$wHR <- 1.94
+
+# Build the models from rows with actual exit velocity, launch angle values
+df.trackman.xwoba.contact.known <- df.trackman.xwoba[!(is.na(df.trackman.xwoba$ExitSpeed)), ]
+df.trackman.xwoba.contact.known <- subset(df.trackman.xwoba.contact.known, PlayResult==c('Single', 'Out', 'Double', 'Triple', 'HomeRun'))
+
+#Encode Handedness
+df.trackman.xwoba.contact.known$Bats <- ifelse(df.trackman.xwoba.contact.known$Bats == "Right",1,0)
+
+#select the variables I want to include in my model
+df.trackman.xwoba.contact.known.model <- df.trackman.xwoba.contact.known[,c('ExitSpeed', 'VertAngle', 'HorzAngle', 'Bats', 'PlayResult')]
+
+#assign x and y for my model
+X = df.trackman.xwoba.contact.known.model[,c('ExitSpeed', 'VertAngle', 'HorzAngle', 'Bats')]
+y = df.trackman.xwoba.contact.known.model[,'PlayResult']
+
 ```
+My goal here isn't necessarily to predict the outcome of a hit as accurately as possible.
 
+If I'm trying to uncover a hitter's true talent, I'll build models using only the things the hitter is responsible for:
 
+batted ball speed
 
+batted ball vertical angle (launch angle)
+
+batted ball horizontal angle (spray angle)
+
+handedness (to standardize spray angle)
+
+As far as the models themselves went, I mostly cared about the probabilistic predictions from each model. I could get the outcome classification from that data, but more importantly, those probabilities were useful. If I assign a value to the results of a batted ball, I can calculate the expected value of the batted ball and use that to value a hitter.
+
+I defined my machine learning problem. Again, my goal was to predict pitch types. Therefore, on the basis of the given data, I was able to regard PlayResult as my classification label and further considered my problem as a classification problem. Besides, I regarded pitcher_id, pitcher_side , pitch_initial_speed_a, break_x_a, break_z_a, pitch_initial_speed_b, spinrate_b, break_x_b, break_z_b as my predictors. In this section, I defined two important functions to assist me in building classification models and tuning their hyperparameters.
+
+In detail, I applied LightGBM, a gradient boosting framework that uses tree based learning algorithms, to my classification problem. It is designed to be distributed and efficient with the following advantages: faster training speed and higher efficiency, lower memory usage, better accuracy, capable of handling large-scale data, and support of parallel, distributed, and GPU learning. Next, regarding hyperparameter tuning, I used Bayesian Optimization instead of Grid Search and Random Search since Bayesian Optimization is far more efficient in saving time and has better overall performance.
 
 
 
